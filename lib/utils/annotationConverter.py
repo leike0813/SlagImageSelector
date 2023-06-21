@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
-import sys
+import warnings
 import math
 from datetime import datetime
 from enum import IntEnum, IntFlag
@@ -9,6 +9,7 @@ import multiprocessing as mul
 import PIL.Image as PILImg
 import json
 import numpy as np
+import pandas as pd
 import cv2
 import PySide2.QtCore as QtC
 from lib.parameterizedImantics.utils import replace_absolute_image_path
@@ -305,117 +306,92 @@ class QAnnotationConverter(QtC.QObject):
             return False
         return True
 
-    def mergeAnnotation(self, source, target, sourceLib=None):
-        with open(source, 'r') as f:
-            source_anno = json.load(f)
-        with open(target, 'r') as f:
-            target_anno = json.load(f)
+    def mergeAnnotation(self, source, target, source_extended=False):
+        if not isinstance(source['images'], pd.DataFrame):
+            source = self.anno_dict2pd(source)
+        if not isinstance(target['images'], pd.DataFrame):
+            target = self.anno_dict2pd(target)
+            _mode = 'dict'
+        else:
+            _mode = 'dataFrame'
 
-        if not sourceLib: # rebuild source mapping table
-            sourceLib = {}
-            imgCount = 0
-            annoCount = 0
-            totalImageCount = len(source_anno['images'])
-            totalAnnotationCount = len(source_anno['annotations'])
-            self.converterMessage.emit('正在重建源文件索引...', self.MessageType.Information)
-            self.buildAnnotationMilestone.emit(0)
-            for img in source_anno['images']:
-                imgID = img['id']
-                imgDict = {}
-                imgDict['annotation_map'] = set()
-                sourceLib[imgID] = imgDict
-                imgCount += 1
-                self.buildAnnotationMilestone.emit(math.floor(imgCount / (totalImageCount / 100)))
-            self.buildAnnotationMilestone.emit(0)
-            for anno in source_anno['annotations']:
-                annoID = anno['id']
-                sourceLib[anno['image_id']]['annotation_map'].add(annoID)
-                annoCount += 1
-                self.buildAnnotationMilestone.emit(math.floor(annoCount / (totalAnnotationCount / 100)))
+        if not source_extended:
+            source['images']['AnnotationMap'] = source['images']['id'].apply(
+                lambda id: set(
+                    source['annotations'][source['annotations']['image_id'] == id]['id']
+                )
+            )
+            source['images'] = source['images'].set_index('id', append=True, drop=False).set_index('file_name', append=True, drop=False)
+        else:
+            source['images'].drop(
+                columns=['Path', 'BoundaryPath', 'ThumbnailPath', 'NumSlagInOrigBoundary'],
+                inplace=True)
 
-        source_cat_set = set()
-        source_cat_inv_map = {}
-        target_cat_set = set()
-        target_cat_id_set = set()
+        source['categories'].set_index(source['categories']['name'].apply(lambda name: name.lower()), drop=False, inplace=True)
+        target_cat_index_frame = target['categories'].set_index(target['categories']['name'].apply(lambda name: name.lower()), drop=False)
+        source_cat_set = set(source['categories']['name'].apply(lambda name: name.lower()))
+        target_cat_set = set(target['categories']['name'].apply(lambda name: name.lower()))
+        target_cat_id_set = set(target['categories']['id'])
         source_cat_id_map = {}
-        catCount = 0
-        for cat in source_anno['categories']:
-            source_cat_set.add(cat['name'].lower()) # use category name as criterion, omit difference in category colors
-            source_cat_inv_map[cat['name'].lower()] = catCount
-            catCount += 1
-        for cat in target_anno['categories']:
-            target_cat_set.add(cat['name'].lower())
-            target_cat_id_set.add(cat['id'])
-        source_cat_to_merge = source_cat_set - source_cat_set.intersection(target_cat_set)  # remove duplicates categories
         cur_cat_id = 1
-        for cat in source_cat_to_merge:
-            cat_to_merge = source_anno['categories'][source_cat_inv_map[cat]]
-            while cur_cat_id in target_cat_id_set:
-                cur_cat_id += 1
-            source_cat_id_map[cat_to_merge['id']] = cur_cat_id
-            cat_to_merge['id'] = cur_cat_id
-            target_anno['categories'].append(cat_to_merge)
+        while cur_cat_id in target_cat_id_set:
             cur_cat_id += 1
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=pd.errors.SettingWithCopyWarning)
+            warnings.filterwarnings('ignore', category=FutureWarning)
+            for cat in source_cat_set:
+                cat_to_merge = source['categories'].loc[cat]
+                if cat in target_cat_set:
+                    source_cat_id_map[cat_to_merge['id']] = target_cat_index_frame.loc[cat]['id']
+                else:
+                    while cur_cat_id in target_cat_id_set:
+                        cur_cat_id += 1
+                    source_cat_id_map[cat_to_merge['id']] = cur_cat_id
+                    cat_to_merge['id'] = cur_cat_id
+                    target['categories'].loc[len(target['categories'])] = cat_to_merge
+                    cur_cat_id += 1
 
-        source_img_set = set()
-        source_inv_map = {}
-        target_img_set = set()
-        target_img_id_set = set()
-        target_anno_id_set = set()
-        imgCount = 0
-        for img in source_anno['images']:
-            source_img_set.add(img['file_name']) # for set intersection
-            source_inv_map[img['file_name']] = imgCount # mapping image filename to source index
-            imgCount += 1
-        for img in target_anno['images']:
-            target_img_set.add(img['file_name']) # for set intersection
-            target_img_id_set.add(img['id']) # get target image ids for index
-        for anno in target_anno['annotations']:
-            target_anno_id_set.add(anno['id']) # get target annotation ids for index
-        source_img_to_merge = source_img_set - source_img_set.intersection(target_img_set) # remove duplicates images
+        source_img_set = set(source['images']['file_name'])
+        target_img_set = set(target['images']['file_name'])
+        target_img_id_set = set(target['images']['id'])
+        source_img_to_merge = source_img_set - source_img_set.intersection(target_img_set)  # remove duplicates images
+        source_annotation_group = source['annotations'].groupby(source['annotations'].image_id)
         cur_img_id = 1
-        cur_anno_id = 1
-
         self.converterMessage.emit('正在合并标注文件...', self.MessageType.Information)
         self.buildAnnotationMilestone.emit(0)
         imgCount = 0
         totalImageCount = len(source_img_to_merge)
         # main loop for image
-        for img_name in source_img_to_merge:
-            while cur_img_id in target_img_id_set:
-                cur_img_id += 1 # search for minimum available image id
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=pd.errors.SettingWithCopyWarning)
+            warnings.filterwarnings('ignore', category=FutureWarning)
+            for img_name in source_img_to_merge:
+                while cur_img_id in target_img_id_set:
+                    cur_img_id += 1  # search for minimum available image id
 
-            img_to_merge = source_anno['images'][source_inv_map[img_name]] # retrieve source image record
-            anno_id_to_merge = sourceLib[img_to_merge['id']]['annotation_map'] # retrieve source annotation ids corresponding to the image
-            anno_to_merge_list = [] # initialize a list to store source annotation records to merge
+                img_to_merge = source['images'].loc[
+                    pd.IndexSlice[:, :, img_name], :].iloc[0]  # retrieve source image record
+                anno_to_merge = source_annotation_group.get_group(img_to_merge['id'])
+                anno_to_merge['image_id'] = cur_img_id
+                img_to_merge['id'] = cur_img_id
+                cur_img_id += 1
+                anno_to_merge.reset_index(drop=True, inplace=True)
+                for i in range(len(anno_to_merge)):
+                    anno_to_merge.loc[i, 'category_id'] = source_cat_id_map.get(
+                        anno_to_merge.loc[i, 'category_id'], cur_cat_id
+                    )
+                target['images'].loc[len(target['images'])] = img_to_merge.drop('AnnotationMap')
+                target['annotations'] = pd.concat([target['annotations'], anno_to_merge])
+                imgCount += 1
+                self.buildAnnotationMilestone.emit(math.floor(imgCount / (totalImageCount / 100)))
 
-            for anno in source_anno['annotations']: # traverse source annotations to find record with specified id
-                if anno['id'] in anno_id_to_merge:
-                    anno_to_merge_list.append(anno)
+            target['annotations'].reset_index(drop=True, inplace=True)
+            target['annotations']['id'] = target['annotations'].index + 1
 
-            for anno in anno_to_merge_list:
-                source_anno['annotations'].pop(source_anno['annotations'].index(anno)) # delete merged source annotations records to avoid repetitive searching
+        if _mode == 'dict':
+            target = self.anno_pd2dict(target)
 
-            # sub loop for annotation
-            for anno in anno_to_merge_list:
-                while cur_anno_id in target_anno_id_set:
-                    cur_anno_id += 1 # search for minimum available annotation id
-
-                anno['id'] = cur_anno_id # change source annotation id for merging
-                anno['image_id'] = cur_img_id # change corresponding image id
-                anno['category_id'] = source_cat_id_map.get(anno['category_id'], anno['category_id']) # change corresponding category id
-                target_anno['annotations'].append(anno) # merge
-
-                cur_anno_id += 1 # try to find next available annotation id
-
-            img_to_merge['id'] = cur_img_id  # change source image id for merging
-            target_anno['images'].append(img_to_merge)  # merge
-
-            cur_img_id += 1 # try to find next available image id
-            imgCount += 1
-            self.buildAnnotationMilestone.emit(math.floor(imgCount / (totalImageCount / 100)))
-
-        return target_anno
+        return target
 
     def folderCompatibilityCheck(self, fld):
         if not isinstance(fld, Path):
@@ -535,6 +511,57 @@ class QAnnotationConverter(QtC.QObject):
         # Step2: Check if _imgNameMismatch>0, missing original image(s), new or overwrite
         # Step3: Check if _imgRootMismatch to determine the necessary to repair
 
+    def extendImageLib(self, imageLib, annotationLib):
+        def getThumbPath(path):
+            if path.exists():
+                thumbPath = (path.parent / '.thumbnail') / path.name
+                if thumbPath.exists():
+                    return thumbPath
+                else:
+                    return None
+            else:
+                return None
+
+        def getNumSlag(boundary_path):
+            if boundary_path.exists():
+                imgBoundaryArray = np.array(PILImg.open(boundary_path), dtype=np.uint16)
+                numSlag = np.max(imgBoundaryArray).astype(np.int_)
+            else:
+                numSlag = -1
+            return numSlag
+
+        def getAnnoMap(img_id, anno_dataframe):
+            return set(anno_dataframe[anno_dataframe['image_id'] == img_id]['id'])
+
+        imageLib['Path'] = imageLib['path'].apply(lambda path: Path(path))
+        imageLib['BoundaryPath'] = imageLib['Path'].apply(
+            lambda path: (path.parent / 'result') / (path.stem + '.border.tif')
+        )
+        imageLib['ThumbnailPath'] = imageLib['Path'].apply(getThumbPath)
+        imageLib['NumSlagInOrigBoundary'] = imageLib['BoundaryPath'].apply(getNumSlag)
+        imageLib['AnnotationMap'] = imageLib['id'].apply(lambda id: getAnnoMap(id, annotationLib))
+        imageLib = imageLib.set_index('id', append=True, drop=False).set_index('file_name', append=True, drop=False)
+
+        return imageLib
+
+    @staticmethod
+    def anno_dict2pd(anno_dict):
+        return {
+            'info': anno_dict['info'],
+            'categories': pd.DataFrame(anno_dict['categories']),
+            'images': pd.DataFrame(anno_dict['images']),
+            'annotations': pd.DataFrame(anno_dict['annotations'])
+        }
+
+    @staticmethod
+    def anno_pd2dict(anno_pd):
+        return {
+            'info': anno_pd['info'],
+            'categories': list(anno_pd['categories'].to_dict(orient='index').values()),
+            'images': list(anno_pd['images'].to_dict(orient='index').values()),
+            'annotations': list(anno_pd['annotations'].to_dict(orient='index').values())
+        }
+
 
 if __name__ == '__main__':
     a = QAnnotationConverter()
@@ -544,9 +571,24 @@ if __name__ == '__main__':
     # a.build_dataset(fld, a.ConvertMode.New, 'Slag', (244, 108, 59))
     # a.convert_annotations()
     # a.output()
-    anno1 = Path('/mnt/WinD/pythondata/PyTorch/data/test1/label/annotations_temp.json')
-    anno2 = Path('/mnt/WinD/pythondata/PyTorch/data/test1/label/annotations.json')
-    anno_combine = a.mergeAnnotation(anno1, anno2)
+    anno1 = Path('/home/joshua/aa_test1/label/annotations.json')
+    anno2 = Path('/home/joshua/aa_test2/label/annotations.json')
+    anno1_f = open(anno1, 'r')
+    anno2_f = open(anno2, 'r')
+    anno1_json = json.load(anno1_f)
+    anno1_json['categories'][0]['id'] = 2
+    for anno in anno1_json['annotations']:
+        anno['category_id'] = 2
+    anno2_json = json.load(anno2_f)
+    anno1_f.close()
+    anno2_f.close()
+    anno1_cat = pd.DataFrame(anno1_json['categories'])
+    anno1_img = pd.DataFrame(anno1_json['images'])
+    anno1_anno = pd.DataFrame(anno1_json['annotations'])
+    anno2_cat = pd.DataFrame(anno2_json['categories'])
+    anno2_img = pd.DataFrame(anno2_json['images'])
+    anno2_anno = pd.DataFrame(anno2_json['annotations'])
+    anno_combine = a.mergeAnnotation(anno1_json, anno2_json)
     with open(anno2.parent / 'annotations_combine.json', 'w') as f:
         json.dump(anno_combine, f)
 

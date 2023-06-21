@@ -28,12 +28,15 @@ class QThumbnailConverter(QtC.QObject):
         super(QThumbnailConverter, self).__init__(parent)
         self.cached = set()
 
-    def cacheThumbnail(self, fld, imageNames, thumbnailScale=0.1):
+    def cacheThumbnail(self, fld, imageNames=None, thumbnailScale=0.1):
         try:
             thumbFld = fld / '.thumbnail'
             if not thumbFld.exists():
                 os.makedirs(thumbFld)
-            imagePaths = [Path(fld / name) for name in imageNames]
+            if not imageNames:
+                imagePaths = [f for f in fld.glob('*.jpg')]
+            else:
+                imagePaths = [Path(fld / name) for name in imageNames]
             imageToCache = []
             invalidImages = set()
             for path in imagePaths:

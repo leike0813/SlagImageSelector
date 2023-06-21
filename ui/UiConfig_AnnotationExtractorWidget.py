@@ -101,6 +101,19 @@ class BaseAnnotationExtractorWidget(Ui_AnnotationExtractorWidget):
         for btn in self.buttons:
             btn.setEnabled(False)
 
+    def setTableWidgetItem(self, row, column, data, role=QtC.Qt.DisplayRole,
+                           flags=QtC.Qt.ItemIsEnabled,
+                           foreground=QtG.QColor('black'),
+                           textAliengment=QtC.Qt.AlignCenter):
+        item = QtW.QTableWidgetItem()
+        item.setData(role, data)
+        item.setFlags(flags)
+        if role != QtC.Qt.ForegroundRole:
+            item.setData(QtC.Qt.ForegroundRole, foreground)
+        if role != QtC.Qt.TextAlignmentRole:
+            item.setData(QtC.Qt.TextAlignmentRole, textAliengment)
+        self.tableWidget.setItem(row, column, item)
+
     @QtC.Slot(str, int)
     def messageDispathcer(self, msg, msgtype):
         if msgtype == 1:

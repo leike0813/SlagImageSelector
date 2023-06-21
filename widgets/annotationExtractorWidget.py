@@ -13,7 +13,7 @@ class AnnotationExtractorWidget(BaseAnnotationExtractorWidget, QtW.QWidget):
     sendToMessageBox = QtC.Signal(str, int)
     repairAnnotationRequest = QtC.Signal(Path, IntFlag)
     openAnnotationRequest = QtC.Signal(Path)
-    extractAnnotationRequest = QtC.Signal(Path, Path, dict)
+    extractAnnotationRequest = QtC.Signal(dict, Path, set)
 
     rotateMatrix = QtG.QMatrix().rotate(-90)
 
@@ -57,7 +57,7 @@ class AnnotationExtractorWidget(BaseAnnotationExtractorWidget, QtW.QWidget):
         super(AnnotationExtractorWidget, self).initialize()
         self.sourceFile = None
         self.targetFld = None
-        self.imageLib = {}
+        self.annoDataDict = {}
         self.checkBoxes = []
         self.selection = set()
 
@@ -94,67 +94,43 @@ class AnnotationExtractorWidget(BaseAnnotationExtractorWidget, QtW.QWidget):
         self.openAnnotationRequest.emit(self.sourceFile)
 
     @QtC.Slot(dict)
-    def onAnnotationOpened(self, imageLib):
-        self.imageLib = imageLib
-        numRows = len(imageLib)
+    def onAnnotationOpened(self, annoDataDict):
+        self.annoDataDict = annoDataDict
+        numRows = len(self.annoDataDict['images'])
         self.tableWidget.setRowCount(numRows)
         rowCount = 0
         invalid = 0
-        for imgID, imgDict in self.imageLib.items():
-            origImgExist = imgDict['path'].exists()
-            boundaryExist = imgDict['boundary_path'].exists()
-            if imgDict['thumbnail_path']:
-                thumbExist = imgDict['thumbnail_path'].exists()
+        for i in range(numRows):
+            imgInfo = self.annoDataDict['images'].iloc[i]
+            origImgExist = imgInfo['Path'].exists()
+            boundaryExist = imgInfo['BoundaryPath'].exists()
+            if imgInfo['ThumbnailPath']:
+                thumbExist = imgInfo['ThumbnailPath'].exists()
             else:
                 thumbExist = False
 
-            imgIDItem = QtW.QTableWidgetItem()
-            imgIDItem.setData(QtC.Qt.DisplayRole, imgID)
-            imgIDItem.setFlags(QtC.Qt.ItemIsEnabled)
-            imgIDItem.setData(QtC.Qt.TextAlignmentRole, QtC.Qt.AlignCenter)
-            self.tableWidget.setItem(rowCount, 0, imgIDItem)
-
-            imgNameItem = QtW.QTableWidgetItem()
-            imgNameItem.setData(QtC.Qt.DisplayRole, imgDict['file_name'])
-            imgNameItem.setFlags(QtC.Qt.ItemIsEnabled)
-            imgNameItem.setData(QtC.Qt.TextAlignmentRole, QtC.Qt.AlignCenter)
-            self.tableWidget.setItem(rowCount, 1, imgNameItem)
-
+            self.setTableWidgetItem(rowCount, 0, int(imgInfo['id']))
+            self.setTableWidgetItem(rowCount, 1, imgInfo['file_name'])
             if origImgExist:
                 if thumbExist:
-                    thumbnail = QtG.QPixmap(str(imgDict['thumbnail_path'])).transformed(self.rotateMatrix)
+                    thumbnail = QtG.QPixmap(str(imgInfo['ThumbnailPath'])).transformed(self.rotateMatrix)
                 else:
-                # thumbnail = QtG.QPixmap(w=200, h=100)
                     thumbnail = '未能生成缩略图'
             else:
                 thumbnail = '缺失'
-            thumbItem = QtW.QTableWidgetItem()
-            thumbItem.setFlags(QtC.Qt.ItemIsEnabled)
-            thumbItem.setData(QtC.Qt.DisplayRole, thumbnail)
-            thumbItem.setData(QtC.Qt.TextAlignmentRole, QtC.Qt.AlignCenter)
-            self.tableWidget.setItem(rowCount, 2, thumbItem)
-
-            numSlagOrigItem = QtW.QTableWidgetItem()
-            numSlagOrigItem.setData(
-                QtC.Qt.DisplayRole,
-                str(imgDict['num_slag_in_orig_boundary']) if boundaryExist else '缺失'
-            ) # must convert to str can work properly, probably caused by shared delegate between columns
-            numSlagOrigItem.setFlags(QtC.Qt.ItemIsEnabled)
-            numSlagOrigItem.setData(QtC.Qt.TextAlignmentRole, QtC.Qt.AlignCenter)
-            self.tableWidget.setItem(rowCount, 3, numSlagOrigItem)
-
-            numSlagAnnoItem = QtW.QTableWidgetItem()
-            numSlagAnnoItem.setData(QtC.Qt.DisplayRole, len(imgDict['annotation_map']))
-            numSlagAnnoItem.setFlags(QtC.Qt.ItemIsEnabled)
-            numSlagAnnoItem.setData(QtC.Qt.TextAlignmentRole, QtC.Qt.AlignCenter)
-            if len(imgDict['annotation_map']) > imgDict['num_slag_in_orig_boundary']:
+            self.setTableWidgetItem(rowCount, 2, thumbnail)
+            self.setTableWidgetItem(
+                rowCount, 3,
+                int(imgInfo['NumSlagInOrigBoundary']) if boundaryExist else '缺失'
+            )
+            if len(imgInfo['AnnotationMap']) > imgInfo['NumSlagInOrigBoundary']:
                 foregroundColor = QtG.QColor('red')
-            elif len(imgDict['annotation_map']) < imgDict['num_slag_in_orig_boundary']:
+            elif len(imgInfo['AnnotationMap']) < imgInfo['NumSlagInOrigBoundary']:
                 foregroundColor = QtG.QColor('blue')
             else:
                 foregroundColor = QtG.QColor('black')
-            numSlagAnnoItem.setData(QtC.Qt.ForegroundRole, foregroundColor)
-            self.tableWidget.setItem(rowCount, 4, numSlagAnnoItem)
+            self.setTableWidgetItem(rowCount, 4, len(imgInfo['AnnotationMap']),
+                                    foreground=foregroundColor)
 
             checkboxWidget = QtW.QWidget()
             checkboxLayout = QtW.QHBoxLayout()
@@ -211,12 +187,7 @@ class AnnotationExtractorWidget(BaseAnnotationExtractorWidget, QtW.QWidget):
                 return None
 
         self.targetFld = targetFld
-        extractLib = {}
-        for imgIdx in self.selection:
-            imgID = self.tableWidget.item(imgIdx, 0).data(QtC.Qt.DisplayRole)
-            extractLib[imgID] = self.imageLib[imgID]
-
-        self.extractAnnotationRequest.emit(self.sourceFile, self.targetFld, extractLib)
+        self.extractAnnotationRequest.emit(self.annoDataDict, self.targetFld, self.selection)
         self.tableWidget.setEnabled(False)
         self.openPushButton.setEnabled(False)
         self.extractPushButton.setEnabled(False)

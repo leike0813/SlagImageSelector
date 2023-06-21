@@ -1,4 +1,5 @@
 import os
+import warnings
 from pathlib import Path
 import datetime
 import re
@@ -7,8 +8,6 @@ import shutil
 import json
 from enum import IntFlag
 from enum import IntEnum
-import PIL.Image as PILImg
-import numpy as np
 import pandas as pd
 import PySide2.QtCore as QtC
 from lib.parameterizedImantics import Default_Config
@@ -171,136 +170,94 @@ class IOWorker(QtC.QObject):
             with open(sourceFile, 'r') as _anno:
                 annotations = json.load(_anno)
 
-            imageLib = {}
-            imgCount = 0
-            annoCount = 0
-            totalImageCount = len(annotations['images'])
-            totalAnnotationCount = len(annotations['annotations'])
-            self.workerMessage.emit('正在分析文件中的图片信息...', self.MessageType.Information)
-            self.sendToProgressBar.emit(0)
-            for img in annotations['images']:
-                imgID = img['id']
-                imgPath = Path(img['path'])
-                boundaryPath = (imgPath.parent / 'result') / (imgPath.stem + '.border.tif')
-                imgDict = {}
-                imgDict['file_name'] = img['file_name']
-                imgDict['path'] = imgPath
-                imgDict['boundary_path'] = boundaryPath
-                imgDict['annotation_map'] = set()
+            annoDataDict = self.annotationConverter.anno_dict2pd(annotations)
+            self.thumbnailConverter.cacheThumbnail(Path(annoDataDict['info']['image_root']))
+            annoDataDict['images'] = self.annotationConverter.extendImageLib(annoDataDict['images'], annoDataDict['annotations'])
 
-                if imgPath.exists():
-                    thumbFld = imgPath.parent / '.thumbnail'
-                    if not thumbFld.exists():
-                        os.makedirs(thumbFld)
-                    if not (thumbFld / imgPath.name).exists():
-                        ret, status = self.thumbnailConverter.convertThumbnail(imgPath, thumbFld)
-                        if not status:
-                            self.workerMessage.emit('{imgname}缩略图转换过程中发生错误', self.MessageType.Information)
-                            imgDict['thumbnail_path'] = None
-                        else:
-                            imgDict['thumbnail_path'] = ret
-                    else:
-                        imgDict['thumbnail_path'] = thumbFld / imgPath.name
-                else:
-                    imgDict['thumbnail_path'] = None
-                if boundaryPath.exists():
-                    imgBoundaryArray = np.array(PILImg.open(boundaryPath), dtype=np.uint16)
-                    imgDict['num_slag_in_orig_boundary'] = np.max(imgBoundaryArray)
-                else:
-                    imgDict['num_slag_in_orig_boundary'] = -1
-                imageLib[imgID] = imgDict
-                imgCount += 1
-                self.sendToProgressBar.emit(math.floor(imgCount / (totalImageCount / 100)))
-
-            self.workerMessage.emit('正在分析文件中的标注信息...', self.MessageType.Information)
-            self.sendToProgressBar.emit(0)
-            for anno in annotations['annotations']:
-                annoID = anno['id']
-                imageLib[anno['image_id']]['annotation_map'].add(annoID)
-                annoCount += 1
-                self.sendToProgressBar.emit(math.floor(annoCount / (totalAnnotationCount / 100)))
-            self.annotationOpened.emit(imageLib)
+            self.annotationOpened.emit(annoDataDict)
         except Exception as e:
             self.workerException.emit(e)
 
-    @QtC.Slot(Path, Path, dict)
-    def onExtractAnnotationRequestReceived(self, sourceFile, targetFld, extractLib):
+    @QtC.Slot(dict, Path, set)
+    def onExtractAnnotationRequestReceived(self, annoDataDict, targetFld, selection):
         try:
-            with open(sourceFile, 'r') as f:
-                sourceAnnotation = json.load(f)
-
             targetAnnotationPath = (targetFld / 'label') / 'annotations.json'
             annotationExist = targetAnnotationPath.exists()
 
-            sourceImageInvMap = {}
-            sourceAnnotationInvMap = {}
-            imgCount = 0
-            annoCount = 0
-            for img in sourceAnnotation['images']:
-                sourceImageInvMap[img['id']] = imgCount
-                imgCount += 1
-            for anno in sourceAnnotation['annotations']:
-                sourceAnnotationInvMap[anno['id']] = annoCount
-                annoCount += 1
+            source_annotation_group = annoDataDict['annotations'].groupby(annoDataDict['annotations'].image_id)
+            extractDataDict = {
+                'info': annoDataDict['info'],
+                'categories': pd.DataFrame(columns=annoDataDict['categories'].columns),
+                'images': pd.DataFrame(columns=annoDataDict['images'].columns),
+                'annotations': pd.DataFrame(columns=annoDataDict['annotations'].columns),
+            }
 
-            newAnnotation = {}
-            newAnnotation['info'] = sourceAnnotation['info']
-            newAnnotation['categories'] = sourceAnnotation['categories']
-            newAnnotation['images'] = []
-            newAnnotation['annotations'] = []
             currentImageID = 1
-            currentAnnotationID = 1
+            categoryIDSet = set()
             self.workerMessage.emit('正在提取并转存标注信息...', self.MessageType.Information)
             self.sendToProgressBar.emit(0)
             imgCount = 0
-            totalImageCount = len(sourceAnnotation['images'])
-            for img in sourceAnnotation['images']:
-                if img['id'] in extractLib.keys():
-                    imageToExtract = sourceAnnotation['images'][sourceImageInvMap[img['id']]]
-                    imgPath = extractLib[img['id']]['path']
-                    boundaryPath = extractLib[img['id']]['boundary_path']
-                    extractImgPath = Path(replace_absolute_image_path(imgPath, sourceAnnotation['info']['image_root'],
-                                                                 targetFld.as_posix()))
-                    extractBoundaryPath = Path(replace_absolute_image_path(boundaryPath,
-                                                                      sourceAnnotation['info']['image_root'],
-                                                                      targetFld.as_posix()))
+            totalImageCount = len(selection)
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=pd.errors.SettingWithCopyWarning)
+                warnings.filterwarnings('ignore', category=FutureWarning)
+                for imgIdx in selection:
+                    img = annoDataDict['images'].iloc[imgIdx]
+                    imgPath = img['Path']
+                    boundaryPath = img['BoundaryPath']
+                    extractImgPath = Path(replace_absolute_image_path(
+                        imgPath,
+                        annoDataDict['info']['image_root'],
+                        targetFld.as_posix()
+                    ))
+                    extractBoundaryPath = Path(replace_absolute_image_path(
+                        boundaryPath,
+                        annoDataDict['info']['image_root'],
+                        targetFld.as_posix()
+                    ))
                     if not extractImgPath.exists():
                         shutil.copy(imgPath, extractImgPath)
                     if not extractBoundaryPath.exists():
                         if not (targetFld / 'result').exists():
                             os.makedirs(targetFld / 'result')
                         shutil.copy(boundaryPath, extractBoundaryPath)
+                    img['path'] = extractImgPath.as_posix()
 
-                    imageToExtract['path'] = extractImgPath.as_posix()
-
-                    for anno_id in extractLib[img['id']]['annotation_map']:
-                        annotationToMerge = sourceAnnotation['annotations'][sourceAnnotationInvMap[anno_id]]
-                        if not annotationExist:
-                            annotationToMerge['image_id'] = currentImageID
-                            annotationToMerge['id'] = currentAnnotationID
-                        newAnnotation['annotations'].append(annotationToMerge)
-                        currentAnnotationID += 1
+                    anno = source_annotation_group.get_group(img['id'])
                     if not annotationExist:
-                        imageToExtract['id'] = currentImageID
-                    newAnnotation['images'].append(imageToExtract)
+                        anno['image_id'] = currentImageID
+                        img['id'] = currentImageID
+                    extractDataDict['images'].loc[imgCount] = img
+                    extractDataDict['annotations'] = pd.concat([extractDataDict['annotations'], anno])
+                    for _, anno_item in anno.iterrows():
+                        categoryIDSet.add(anno_item['category_id'])
                     currentImageID += 1
-                imgCount += 1
-                self.sendToProgressBar.emit(math.floor(imgCount / (totalImageCount / 100)))
+                    imgCount += 1
+                    self.sendToProgressBar.emit(math.floor(imgCount / (totalImageCount / 100)))
 
-            newAnnotation['info']['image_root'] = targetFld.as_posix()
+            categoryIDSet = list(categoryIDSet)
+            totalCategories = len(categoryIDSet)
+            catIndexFrame = annoDataDict['categories'].set_index('id', drop=False)
+            for i in range(totalCategories):
+                extractDataDict['categories'].loc[i] = catIndexFrame.loc[categoryIDSet[i]]
+
+            extractDataDict['info']['image_root'] = targetFld.as_posix()
 
             if annotationExist:
-                with open(targetAnnotationPath.parent / 'annotations_temp.json', 'w') as f:
-                    json.dump(newAnnotation, f)
+                with open(targetAnnotationPath, 'r') as f:
+                    targetAnnotation = json.load(f)
 
-                newAnnotation = self.annotationConverter.mergeAnnotation(targetAnnotationPath.parent / 'annotations_temp.json', targetAnnotationPath, extractLib)
-                os.remove(targetAnnotationPath.parent / 'annotations_temp.json')
+                targetAnnotation = self.annotationConverter.anno_dict2pd(targetAnnotation)
+                extractDataDict = self.annotationConverter.mergeAnnotation(extractDataDict, targetAnnotation)
             else:
+                extractDataDict['images'].drop(
+                    columns=['Path', 'BoundaryPath', 'ThumbnailPath', 'NumSlagInOrigBoundary', 'AnnotationMap'],
+                    inplace=True)
                 if not (targetFld / 'label').exists():
                     os.makedirs(targetFld / 'label')
 
             with open(targetAnnotationPath, 'w') as f:
-                json.dump(newAnnotation, f)
+                json.dump(self.annotationConverter.anno_pd2dict(extractDataDict), f)
 
             self.workerMessage.emit('提取完成', self.MessageType.Information)
             self.annotationExtracted.emit(True)
