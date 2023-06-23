@@ -1,5 +1,7 @@
 import os
 import warnings
+from io import BytesIO
+import hashlib
 from pathlib import Path
 import datetime
 import re
@@ -39,17 +41,21 @@ class IOWorker(QtC.QObject):
     convertFinished = QtC.Signal(bool)
     annotationOpened = QtC.Signal(dict)
     annotationExtracted = QtC.Signal(bool)
+    askForOverwrite = QtC.Signal(str)
     selectionSaved = QtC.Signal(bool)
     thumbnailCached = QtC.Signal(Path, list, set, float)
 
-    def __init__(self, mainWindow, parent=None):
+    def __init__(self, mainWindow, mutex=QtC.QMutex(), waitConditions={}, parent=None):
         super(IOWorker, self).__init__(parent)
         self.mainWindow = mainWindow
+        self.mutex = mutex
+        self.waitConditions = waitConditions
         self.imanticsConfig = Default_Config.clone()
         # self.imanticsConfig.IMAGE.USE_RELATIVE_PATH = True
         self.annotationConverter = QAnnotationConverter(config=self.imanticsConfig, parent=self)
         self.thumbnailConverter = QThumbnailConverter(parent=self)
         self.creationTimeRegExp = r'^_([0-9]{6})_([0-9]{9})'
+        # self.backupCreationTimeRegExp = r'^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2})-([0-9]{2})-([0-9]{2}).([0-9]{3})'
 
         self.annotationConverter.converterMessage.connect(self.converterMessageProxy)
         self.annotationConverter.buildAnnotationMilestone.connect(self.converterProgressProxy) # for singlethread compatibility
@@ -69,6 +75,15 @@ class IOWorker(QtC.QObject):
             self.sendToProgressBar.emit(0)
             for imgPath in origImagePaths:
                 timeStr = re.findall(self.creationTimeRegExp, imgPath.name)
+                if len(timeStr) == 0:
+                    # timeStr = re.findall(self.backupCreationTimeRegExp, imgPath.name)
+                    # timeStr = [(
+                    #     timeStr[0][0][2:] + timeStr[0][1] + timeStr[0][2],
+                    #     timeStr[0][3] + timeStr[0][4] + timeStr[0][5] + timeStr[0][6]
+                    # )]
+                    self.workerMessage.emit('请选择正确的原始数据文件夹', self.MessageType.Critical)
+                    self.workerMessage.emit('', self.MessageType.Information)
+                    return
                 if (resultFld / imgPath.name).exists():
                     imageLib.loc[imgCount] = [
                         imgPath.name,
@@ -184,6 +199,10 @@ class IOWorker(QtC.QObject):
             targetAnnotationPath = (targetFld / 'label') / 'annotations.json'
             annotationExist = targetAnnotationPath.exists()
 
+            imageAnnotationPath = (targetFld / 'label') / 'image_annotations'
+            if not imageAnnotationPath.exists():
+                os.makedirs(imageAnnotationPath)
+
             source_annotation_group = annoDataDict['annotations'].groupby(annoDataDict['annotations'].image_id)
             extractDataDict = {
                 'info': annoDataDict['info'],
@@ -198,6 +217,7 @@ class IOWorker(QtC.QObject):
             self.sendToProgressBar.emit(0)
             imgCount = 0
             totalImageCount = len(selection)
+            overwriteSet = set()
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', category=pd.errors.SettingWithCopyWarning)
                 warnings.filterwarnings('ignore', category=FutureWarning)
@@ -215,18 +235,40 @@ class IOWorker(QtC.QObject):
                         annoDataDict['info']['image_root'],
                         targetFld.as_posix()
                     ))
+                    imgAnnoPath = imageAnnotationPath / (imgPath.stem + '.json')
                     if not extractImgPath.exists():
                         shutil.copy(imgPath, extractImgPath)
                     if not extractBoundaryPath.exists():
                         if not (targetFld / 'result').exists():
                             os.makedirs(targetFld / 'result')
                         shutil.copy(boundaryPath, extractBoundaryPath)
+
                     img['path'] = extractImgPath.as_posix()
 
                     anno = source_annotation_group.get_group(img['id'])
                     if not annotationExist:
                         anno['image_id'] = currentImageID
                         img['id'] = currentImageID
+
+                    anno_dict = anno.to_dict(orient='index')
+                    if not imgAnnoPath.exists():
+                        with open(imgAnnoPath, 'w') as f:
+                            json.dump(anno_dict, f)
+                    else:
+                        print(self.sha1Comparer(anno_dict, imgAnnoPath))
+                        if not self.sha1Comparer(anno_dict, imgAnnoPath):
+                            self.mutex.lock()
+                            _applyForAllFlag = self.mainWindow._applyForAllFlag
+                            if not _applyForAllFlag:
+                                self.askForOverwrite.emit(imgPath.name)
+                                self.waitConditions['AskForOverwrite'].wait(self.mutex)
+                            _overwriteFlag = self.mainWindow._overwriteFlag
+                            self.mutex.unlock()
+                            if _overwriteFlag:
+                                overwriteSet.add(imgPath.name)
+                                with open(imgAnnoPath, 'w') as f:
+                                    json.dump(anno_dict, f)
+
                     extractDataDict['images'].loc[imgCount] = img
                     extractDataDict['annotations'] = pd.concat([extractDataDict['annotations'], anno])
                     for _, anno_item in anno.iterrows():
@@ -234,6 +276,13 @@ class IOWorker(QtC.QObject):
                     currentImageID += 1
                     imgCount += 1
                     self.sendToProgressBar.emit(math.floor(imgCount / (totalImageCount / 100)))
+
+                if not annotationExist:
+                    extractDataDict['annotations'].reset_index(drop=True, inplace=True)
+                    extractDataDict['annotations']['id'] = extractDataDict['annotations'].index + 1
+
+            self.mainWindow._overwriteFlag = False
+            self.mainWindow._applyForAllFlag = False
 
             categoryIDSet = list(categoryIDSet)
             totalCategories = len(categoryIDSet)
@@ -248,7 +297,7 @@ class IOWorker(QtC.QObject):
                     targetAnnotation = json.load(f)
 
                 targetAnnotation = self.annotationConverter.anno_dict2pd(targetAnnotation)
-                extractDataDict = self.annotationConverter.mergeAnnotation(extractDataDict, targetAnnotation)
+                extractDataDict = self.annotationConverter.mergeAnnotation(extractDataDict, targetAnnotation, overwriteSet)
             else:
                 extractDataDict['images'].drop(
                     columns=['Path', 'BoundaryPath', 'ThumbnailPath', 'NumSlagInOrigBoundary', 'AnnotationMap'],
@@ -295,3 +344,30 @@ class IOWorker(QtC.QObject):
     @QtC.Slot(int, int)
     def converterProgressRangeProxy(self, minimum, maximum):
         self.sendToProgressBarRange.emit(minimum, maximum)
+
+
+    @staticmethod
+    def sha1Comparer(source_json_dict, target_file_path, block_size=64 * 1024):
+        """
+        :param source_json_dict: JSON serializable dictionary
+        :param target_file_path: .json file
+        """
+        with open(target_file_path, 'rb') as target_io:
+            sha1_target = hashlib.sha1()
+            while True:
+                target_data = target_io.read(block_size)
+                if not target_data:
+                    break
+                sha1_target.update(target_data)
+
+        source_io = BytesIO()
+        source_io.write(json.dumps(source_json_dict).encode('utf-8'))
+        source_io.seek(0)
+        sha1_source = hashlib.sha1()
+        while True:
+            source_data = source_io.read(block_size)
+            if not source_data:
+                break
+            sha1_source.update(source_data)
+
+        return sha1_source.digest() == sha1_target.digest()

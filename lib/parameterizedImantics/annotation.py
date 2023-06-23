@@ -724,7 +724,13 @@ class Polygons:
         20230608: Feature added by Joshua Reed
         :return:
         """
-        return [cv2.contourArea(polygon.reshape(-1, 2)) for polygon in self.polygons]
+        areas = []
+        for polygon in self.polygons:
+            try:
+                areas.append(cv2.contourArea(polygon.reshape(-1, 2)))
+            except Exception:
+                areas.append(0)
+        return areas
 
     def area(self):
         """

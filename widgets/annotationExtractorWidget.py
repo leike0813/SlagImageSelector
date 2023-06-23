@@ -2,6 +2,7 @@ from pathlib import Path
 from enum import IntFlag
 import PySide2.QtCore as QtC, PySide2.QtWidgets as QtW, PySide2.QtGui as QtG
 from workers import IOWorker
+from lib.customWidgets import QCustomMessageBox
 from ui.UiConfig_AnnotationExtractorWidget import BaseAnnotationExtractorWidget
 
 
@@ -19,7 +20,10 @@ class AnnotationExtractorWidget(BaseAnnotationExtractorWidget, QtW.QWidget):
 
     def __init__(self, parent=None):
         super(AnnotationExtractorWidget, self).__init__(parent)
-        self.worker = IOWorker(self)
+        self.mutex = QtC.QMutex()
+        self.waitConditions = {'AskForOverwrite': QtC.QWaitCondition()}
+
+        self.worker = IOWorker(self, mutex=self.mutex, waitConditions=self.waitConditions)
         self.workerThread = QtC.QThread()
         self.worker.moveToThread(self.workerThread)
 
@@ -52,6 +56,7 @@ class AnnotationExtractorWidget(BaseAnnotationExtractorWidget, QtW.QWidget):
         self.worker.annotationExtracted.connect(self.tableWidget.setEnabled)
         self.worker.annotationExtracted.connect(self.openPushButton.setEnabled)
         self.worker.annotationExtracted.connect(self.extractPushButton.setEnabled)
+        self.worker.askForOverwrite.connect(self.onAskedForOverwrite)
 
     def initialize(self):
         super(AnnotationExtractorWidget, self).initialize()
@@ -60,6 +65,8 @@ class AnnotationExtractorWidget(BaseAnnotationExtractorWidget, QtW.QWidget):
         self.annoDataDict = {}
         self.checkBoxes = []
         self.selection = set()
+        self._overwriteFlag = False
+        self._applyForAllFlag = False
 
     def showEvent(self, event):
         self.initialize()
@@ -191,6 +198,38 @@ class AnnotationExtractorWidget(BaseAnnotationExtractorWidget, QtW.QWidget):
         self.tableWidget.setEnabled(False)
         self.openPushButton.setEnabled(False)
         self.extractPushButton.setEnabled(False)
+
+    @QtC.Slot(str)
+    def onAskedForOverwrite(self, imgName):
+        self.mutex.lock()
+        messageBox = QCustomMessageBox.flexible(
+            QtW.QMessageBox.Question,
+            '选择标注写入模式',
+            '{imgName}提取的的标注信息与目标文件夹内的已有标注不一致，请选择标注信息写入模式'.format(
+                imgName=imgName
+            ),
+            ['覆写', '全部覆写', '跳过', '全部跳过'],
+            roles=[
+                QtW.QMessageBox.YesRole,
+                QtW.QMessageBox.YesRole,
+                QtW.QMessageBox.NoRole,
+                QtW.QMessageBox.DestructiveRole,
+            ],
+        )
+        if messageBox.clickedButton().text() == '覆写':
+            self._overwriteFlag = True
+        elif messageBox.clickedButton().text() == '全部覆写':
+            self._overwriteFlag = True
+            self._applyForAllFlag = True
+        elif messageBox.clickedButton().text() == '跳过':
+            self._overwriteFlag = False
+        elif messageBox.clickedButton().text() == '全部跳过':
+            self._overwriteFlag = False
+            self._applyForAllFlag = True
+        else:
+            raise NotImplementedError
+        self.waitConditions['AskForOverwrite'].wakeAll()
+        self.mutex.unlock()
 
     @QtC.Slot(int)
     def onImageSelected(self, state):

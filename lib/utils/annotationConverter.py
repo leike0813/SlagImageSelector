@@ -306,7 +306,7 @@ class QAnnotationConverter(QtC.QObject):
             return False
         return True
 
-    def mergeAnnotation(self, source, target, source_extended=False):
+    def mergeAnnotation(self, source, target, overwrite_set=set(), source_extended=False):
         if not isinstance(source['images'], pd.DataFrame):
             source = self.anno_dict2pd(source)
         if not isinstance(target['images'], pd.DataFrame):
@@ -354,7 +354,7 @@ class QAnnotationConverter(QtC.QObject):
         source_img_set = set(source['images']['file_name'])
         target_img_set = set(target['images']['file_name'])
         target_img_id_set = set(target['images']['id'])
-        source_img_to_merge = source_img_set - source_img_set.intersection(target_img_set)  # remove duplicates images
+        source_img_to_merge = (source_img_set - source_img_set.intersection(target_img_set)).union(overwrite_set)  # remove duplicates images
         source_annotation_group = source['annotations'].groupby(source['annotations'].image_id)
         cur_img_id = 1
         self.converterMessage.emit('正在合并标注文件...', self.MessageType.Information)
@@ -372,15 +372,22 @@ class QAnnotationConverter(QtC.QObject):
                 img_to_merge = source['images'].loc[
                     pd.IndexSlice[:, :, img_name], :].iloc[0]  # retrieve source image record
                 anno_to_merge = source_annotation_group.get_group(img_to_merge['id'])
-                anno_to_merge['image_id'] = cur_img_id
-                img_to_merge['id'] = cur_img_id
-                cur_img_id += 1
+                if img_name in overwrite_set:
+                    target['annotations'] = target['annotations'][
+                        target['annotations']['image_id'] != img_to_merge['id']
+                    ]
+                    anno_to_merge['image_id'] = img_to_merge['id']
+                else:
+                    anno_to_merge['image_id'] = cur_img_id
+                    img_to_merge['id'] = cur_img_id
+                    cur_img_id += 1
                 anno_to_merge.reset_index(drop=True, inplace=True)
                 for i in range(len(anno_to_merge)):
                     anno_to_merge.loc[i, 'category_id'] = source_cat_id_map.get(
                         anno_to_merge.loc[i, 'category_id'], cur_cat_id
                     )
-                target['images'].loc[len(target['images'])] = img_to_merge.drop('AnnotationMap')
+                if img_name not in overwrite_set:
+                    target['images'].loc[len(target['images'])] = img_to_merge.drop('AnnotationMap')
                 target['annotations'] = pd.concat([target['annotations'], anno_to_merge])
                 imgCount += 1
                 self.buildAnnotationMilestone.emit(math.floor(imgCount / (totalImageCount / 100)))
