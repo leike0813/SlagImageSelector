@@ -18,6 +18,7 @@ class Category(Semantic):
             'parent': coco.get('supercategory'),
             'color': coco.get('color')
         }
+
         return cls(config=config, **data)
 
 
@@ -40,13 +41,22 @@ class Category(Semantic):
             raise RuntimeError('Invalid color format: {fmt}'.format(
                 fmt=self.config.COLOR.DEFAULT_EXPORT_FORMAT))
 
+        # category = {
+        #     'id': self.id,
+        #     'name': self.name,
+        #     'supercategory': self.parent.name if self.parent else None,
+        #     'metadata': self.metadata,
+        #     'color': color
+        # }
+
         category = {
             'id': self.id,
             'name': self.name,
             'supercategory': self.parent.name if self.parent else None,
-            'metadata': self.metadata,
             'color': color
-        }
+        } # 20230626: Modified by Joshua Reed
+        if self.config.CATEGORY.KEYS.METADATA:
+            category['metadata'] = self.metadata
 
         if include:
             return {

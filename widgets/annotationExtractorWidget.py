@@ -167,13 +167,13 @@ class AnnotationExtractorWidget(BaseAnnotationExtractorWidget, QtW.QWidget):
             status = QtW.QMessageBox.critical(self, '错误', '未选择正确的转存文件夹', QtW.QMessageBox.Ok)
             return None
 
-        _emptyFld, _compatibleFld = self.worker.annotationConverter.folderCompatibilityCheck(targetFld)
-        if not (_emptyFld or _compatibleFld):
-            status = QtW.QMessageBox.warning(
-                self, '警告', '目标文件夹包含不匹配的原始图像/边界数据，建议清理该文件夹或选择其他文件夹，是否继续？',
-                QtW.QMessageBox.Ok | QtW.QMessageBox.Cancel)
-            if status == QtW.QMessageBox.StandardButton.Cancel:
-                return None
+        # _emptyFld, _compatibleFld = self.worker.annotationConverter.folderCompatibilityCheck(targetFld)
+        # if not (_emptyFld or _compatibleFld):
+        #     status = QtW.QMessageBox.warning(
+        #         self, '警告', '目标文件夹包含不匹配的原始图像/边界数据，建议清理该文件夹或选择其他文件夹，是否继续？',
+        #         QtW.QMessageBox.Ok | QtW.QMessageBox.Cancel)
+        #     if status == QtW.QMessageBox.StandardButton.Cancel:
+        #         return None
 
         convertFlag = self.worker.annotationConverter.annotationCompatibilityCheck(targetFld, 'Slag')
         self.worker.annotationRepaired.disconnect(self.onAnnotationRepaired)

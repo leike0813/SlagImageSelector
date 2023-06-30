@@ -69,7 +69,6 @@ class Image(Semantic):
             'date_captured': coco.get('date_captured')
         })
 
-
         data = {
             'id': coco.get('id', 0),
             'width': coco.get('width', 0),
@@ -243,19 +242,34 @@ class Image(Semantic):
             yield category
         
     def coco(self, include=True):
+        # image = {
+        #     'id': self.id,
+        #     'width': self.width,
+        #     'height': self.height,
+        #     'file_name': self.file_name,
+        #     'path': self.path,
+        #     'license': self.metadata.get('license'),
+        #     'fickr_url': self.metadata.get('flicker_url'),
+        #     'coco_url': self.metadata.get('coco_url'),
+        #     'date_captured': self.metadata.get('date_captured'),
+        #     'metadata': self.metadata
+        # }
+
         image = {
             'id': self.id,
             'width': self.width,
             'height': self.height,
             'file_name': self.file_name,
-            'path': self.path,
             'license': self.metadata.get('license'),
             'fickr_url': self.metadata.get('flicker_url'),
             'coco_url': self.metadata.get('coco_url'),
             'date_captured': self.metadata.get('date_captured'),
-            'metadata': self.metadata
-        }
-        
+        } # 20230626: Modified by Joshua Reed
+        if self.config.IMAGE.KEYS.PATH:
+            image['path'] = self.path
+        if self.config.IMAGE.KEYS.METADATA:
+            image['metadata'] = self.metadata
+
         if include:
             
             categories = []

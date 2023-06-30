@@ -578,26 +578,32 @@ if __name__ == '__main__':
     # a.build_dataset(fld, a.ConvertMode.New, 'Slag', (244, 108, 59))
     # a.convert_annotations()
     # a.output()
-    anno1 = Path('/home/joshua/aa_test1/label/annotations.json')
-    anno2 = Path('/home/joshua/aa_test2/label/annotations.json')
-    anno1_f = open(anno1, 'r')
-    anno2_f = open(anno2, 'r')
-    anno1_json = json.load(anno1_f)
-    anno1_json['categories'][0]['id'] = 2
-    for anno in anno1_json['annotations']:
-        anno['category_id'] = 2
-    anno2_json = json.load(anno2_f)
-    anno1_f.close()
-    anno2_f.close()
-    anno1_cat = pd.DataFrame(anno1_json['categories'])
-    anno1_img = pd.DataFrame(anno1_json['images'])
-    anno1_anno = pd.DataFrame(anno1_json['annotations'])
-    anno2_cat = pd.DataFrame(anno2_json['categories'])
-    anno2_img = pd.DataFrame(anno2_json['images'])
-    anno2_anno = pd.DataFrame(anno2_json['annotations'])
-    anno_combine = a.mergeAnnotation(anno1_json, anno2_json)
-    with open(anno2.parent / 'annotations_combine.json', 'w') as f:
-        json.dump(anno_combine, f)
+    # anno1 = Path('/home/joshua/aa_test1/label/annotations.json')
+    # anno2 = Path('/home/joshua/aa_test2/label/annotations.json')
+    # anno1_f = open(anno1, 'r')
+    # anno2_f = open(anno2, 'r')
+    # anno1_json = json.load(anno1_f)
+    # anno1_json['categories'][0]['id'] = 2
+    # for anno in anno1_json['annotations']:
+    #     anno['category_id'] = 2
+    # anno2_json = json.load(anno2_f)
+    # anno1_f.close()
+    # anno2_f.close()
+    # anno1_cat = pd.DataFrame(anno1_json['categories'])
+    # anno1_img = pd.DataFrame(anno1_json['images'])
+    # anno1_anno = pd.DataFrame(anno1_json['annotations'])
+    # anno2_cat = pd.DataFrame(anno2_json['categories'])
+    # anno2_img = pd.DataFrame(anno2_json['images'])
+    # anno2_anno = pd.DataFrame(anno2_json['annotations'])
+    # anno_combine = a.mergeAnnotation(anno1_json, anno2_json)
+    # with open(anno2.parent / 'annotations_combine.json', 'w') as f:
+    #     json.dump(anno_combine, f)
+    anno = Path('/mnt/WinD/pythondata/PyTorch/data/slag/label/annotations.json')
+    with open(anno, 'r') as f:
+        anno_json = json.load(f)
+    anno_pd = a.anno_dict2pd(anno_json)
+
+
 
 
     ii=0

@@ -87,6 +87,8 @@ class Dataset(Semantic):
         """
         if isinstance(coco_obj, dict):
             coco_info = coco_obj.get('info', {})  # 20230616: get.default: [] -> {}, Modified by Joshua Reed
+            if not isinstance(coco_info, dict): # 20230626: Modified by Joshua Reed
+                coco_info = {'default': coco_info}
             image_root = coco_info.get('image_root', '') # 20230616: Feature added by Joshua Reed
             dataset = cls(name, image_root=image_root, config=config) # 20230616: add param:image_root, Modified by Joshua Reed
 
@@ -112,9 +114,10 @@ class Dataset(Semantic):
                 category = index_categories[category_id]
                 segmentation = annotation.get('segmentation')
                 metadata = annotation.get('metadata', {})
-                
+
                 # color can be stored in the metadata
                 color = annotation.get('color', metadata.get('color'))
+
 
                 annotation = Annotation(image, category, polygons=segmentation,\
                                         color=color, metadata=metadata, config=config)

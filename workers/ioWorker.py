@@ -50,10 +50,19 @@ class IOWorker(QtC.QObject):
         self.mainWindow = mainWindow
         self.mutex = mutex
         self.waitConditions = waitConditions
+
         self.imanticsConfig = Default_Config.clone()
-        # self.imanticsConfig.IMAGE.USE_RELATIVE_PATH = True
+        self.imanticsConfig.CATEGORY.KEYS.METADATA = False
+        self.imanticsConfig.ANNOTATION.KEYS.WIDTH = False
+        self.imanticsConfig.ANNOTATION.KEYS.HEIGHT = False
+        self.imanticsConfig.ANNOTATION.KEYS.COLOR = False
+        self.imanticsConfig.ANNOTATION.KEYS.ISBBOX = False
+        self.imanticsConfig.ANNOTATION.KEYS.METADATA = False
+        self.imanticsConfig.IMAGE.KEYS.METADATA = False
+
         self.annotationConverter = QAnnotationConverter(config=self.imanticsConfig, parent=self)
         self.thumbnailConverter = QThumbnailConverter(parent=self)
+
         self.creationTimeRegExp = r'^_([0-9]{6})_([0-9]{9})'
         # self.backupCreationTimeRegExp = r'^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2})-([0-9]{2})-([0-9]{2}).([0-9]{3})'
 
@@ -224,24 +233,24 @@ class IOWorker(QtC.QObject):
                 for imgIdx in selection:
                     img = annoDataDict['images'].iloc[imgIdx]
                     imgPath = img['Path']
-                    boundaryPath = img['BoundaryPath']
+                    # boundaryPath = img['BoundaryPath']
                     extractImgPath = Path(replace_absolute_image_path(
                         imgPath,
                         annoDataDict['info']['image_root'],
                         targetFld.as_posix()
                     ))
-                    extractBoundaryPath = Path(replace_absolute_image_path(
-                        boundaryPath,
-                        annoDataDict['info']['image_root'],
-                        targetFld.as_posix()
-                    ))
+                    # extractBoundaryPath = Path(replace_absolute_image_path(
+                    #     boundaryPath,
+                    #     annoDataDict['info']['image_root'],
+                    #     targetFld.as_posix()
+                    # ))
                     imgAnnoPath = imageAnnotationPath / (imgPath.stem + '.json')
                     if not extractImgPath.exists():
                         shutil.copy(imgPath, extractImgPath)
-                    if not extractBoundaryPath.exists():
-                        if not (targetFld / 'result').exists():
-                            os.makedirs(targetFld / 'result')
-                        shutil.copy(boundaryPath, extractBoundaryPath)
+                    # if not extractBoundaryPath.exists():
+                    #     if not (targetFld / 'result').exists():
+                    #         os.makedirs(targetFld / 'result')
+                    #     shutil.copy(boundaryPath, extractBoundaryPath)
 
                     img['path'] = extractImgPath.as_posix()
 
@@ -255,7 +264,6 @@ class IOWorker(QtC.QObject):
                         with open(imgAnnoPath, 'w') as f:
                             json.dump(anno_dict, f)
                     else:
-                        print(self.sha1Comparer(anno_dict, imgAnnoPath))
                         if not self.sha1Comparer(anno_dict, imgAnnoPath):
                             self.mutex.lock()
                             _applyForAllFlag = self.mainWindow._applyForAllFlag

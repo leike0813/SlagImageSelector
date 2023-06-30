@@ -288,21 +288,41 @@ class Annotation(Semantic):
             raise RuntimeError('Invalid color format: {fmt}'.format(
                 fmt=self.config.COLOR.DEFAULT_EXPORT_FORMAT))
 
+        # annotation = {
+        #     'id': self.id,
+        #     'image_id': image_id,
+        #     'category_id': category_id,
+        #     'width': self.width,
+        #     'height': self.height,
+        #     'area': int(self.area),
+        #     'segmentation': self.polygons.segmentation,
+        #     'bbox': self.bbox.bbox(style=BBox.WIDTH_HEIGHT),
+        #     'metadata': self.metadata,
+        #     'color': color,
+        #     'iscrowd': 0,
+        #     'isbbox': self._init_with_bbox
+        #
+        # }
+
         annotation = {
             'id': self.id,
             'image_id': image_id,
             'category_id': category_id,
-            'width': self.width,
-            'height': self.height,
             'area': int(self.area),
             'segmentation': self.polygons.segmentation,
             'bbox': self.bbox.bbox(style=BBox.WIDTH_HEIGHT),
-            'metadata': self.metadata,
-            'color': color,
             'iscrowd': 0,
-            'isbbox': self._init_with_bbox
-
-        }
+        } # 20230626: Modified by Joshua Reed
+        if self.config.ANNOTATION.KEYS.WIDTH:
+            annotation['width'] = self.width
+        if self.config.ANNOTATION.KEYS.HEIGHT:
+            annotation['height'] = self.height
+        if self.config.ANNOTATION.KEYS.COLOR:
+            annotation['color'] = color
+        if self.config.ANNOTATION.KEYS.ISBBOX:
+            annotation['isbbox'] = self._init_with_bbox
+        if self.config.ANNOTATION.KEYS.METADATA:
+            annotation['metadata'] = self.metadata
 
         if include:
             image = category = {}
@@ -651,7 +671,8 @@ class Polygons:
     _c_simplified_polygons = None
 
     def __init__(self, polygons, config=_default_config):
-        self.polygons = [np.array(polygon).flatten() for polygon in polygons]
+        # 20230226: Added type conversion to avoid opencv calculation issues, by Joshua Reed
+        self.polygons = [np.array(polygon).flatten().astype(int) for polygon in polygons]
         self.config = config
     
     def mask(self, width=None, height=None):
@@ -726,10 +747,7 @@ class Polygons:
         """
         areas = []
         for polygon in self.polygons:
-            try:
-                areas.append(cv2.contourArea(polygon.reshape(-1, 2)))
-            except Exception:
-                areas.append(0)
+            areas.append(cv2.contourArea(polygon.reshape(-1, 2)))
         return areas
 
     def area(self):
