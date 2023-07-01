@@ -14,7 +14,7 @@ import PySide2.QtCore as QtC
 __all__ = ['QGroundTruthConverter']
 
 
-def convert_groundTruth_single(segmentation, bbox, kernel, grayscale_incseq):
+def convert_groundTruth_single(segmentation, bbox, image_id, kernel, grayscale_incseq):
     points = np.array(segmentation).reshape(-1, 2).astype(int)
     bbox = [int(i) for i in bbox]
     boundary_smooth_halfwidth = len(grayscale_incseq)
@@ -40,7 +40,64 @@ def convert_groundTruth_single(segmentation, bbox, kernel, grayscale_incseq):
 
     region_mask = cv2.fillPoly(region_mask, [points_enlarged], 1)
 
-    return region_mask, boundary_mask, bbox_enlarged
+    return region_mask, boundary_mask, bbox_enlarged, image_id
+
+
+def insert_groundTruth_single(img, img_gt, category_name, category_color, gt_region_fld, gt_boundary_fld, validation_fld):
+    img_width = img['width']
+    img_height = img['height']
+    img_path = Path(img['path'])
+    try:
+        img_orig = cv2.imread(img_path.as_posix())
+    except Exception:
+        img_orig = None
+    img_boundary_mask = np.zeros((img_height, img_width))
+    img_region_mask = np.zeros((img_height, img_width))
+
+    for gt in img_gt:
+        img_boundary_mask = merge_mask(img_boundary_mask, gt[1], gt[2])
+        img_region_mask = merge_mask(img_region_mask, gt[0], gt[2])
+
+    if np.max(img_boundary_mask) > 1:
+        img_boundary_mask = np.clip(img_boundary_mask, 0, 1)
+    if np.max(img_region_mask) > 1:
+        img_region_mask = np.clip(img_region_mask, 0, 1)
+    if img_orig is not None:
+        img_mask = np.stack([(img_boundary_mask * category_color[2]).astype(np.uint8),
+                             (img_boundary_mask * category_color[1]).astype(np.uint8),
+                             (img_boundary_mask * category_color[0]).astype(np.uint8)], axis=2)
+        img_orig = cv2.addWeighted(img_orig, 1, img_mask, 0.5, 0)
+        cv2.imwrite((validation_fld / (img_path.stem + '_{cat}_validation.png'.format(cat=category_name))).as_posix(),
+                    img_orig)
+
+    cv2.imwrite((gt_boundary_fld / (img_path.stem + '_{cat}_boundary.png'.format(cat=category_name))).as_posix(),
+                (img_boundary_mask * 255).astype(np.uint8))
+    cv2.imwrite((gt_region_fld / (img_path.stem + '_{cat}_region.png'.format(cat=category_name))).as_posix(),
+                (img_region_mask * 255).astype(np.uint8))
+
+
+def merge_mask(orig_mask, new_mask, bbox):
+    img_width = orig_mask.shape[1]
+    img_height = orig_mask.shape[0]
+    orig_area_width_lower = bbox[0] if bbox[0] >= 0 else 0
+    orig_area_height_lower = bbox[1] if bbox[1] >= 0 else 0
+    orig_area_width_upper = min(bbox[0] + bbox[2], img_width - 1)
+    orig_area_height_upper = min(bbox[1] + bbox[3], img_height - 1)
+    orig_area = orig_mask[
+                orig_area_height_lower: orig_area_height_upper + 1,
+                orig_area_width_lower: orig_area_width_upper + 1]
+    new_area_width_lower = 0 if bbox[0] >= 0 else -bbox[0]
+    new_area_height_lower = 0 if bbox[1] >= 0 else -bbox[1]
+    new_area_width_upper = bbox[2] \
+        if bbox[0] + bbox[2] <= img_width - 1 else img_width - 1 - bbox[0]
+    new_area_height_upper = bbox[3] \
+        if bbox[1] + bbox[3] <= img_height - 1 else img_height - 1 - bbox[1]
+    new_area = new_mask[
+               new_area_height_lower: new_area_height_upper + 1,
+               new_area_width_lower: new_area_width_upper + 1]
+    orig_area += new_area
+
+    return orig_mask
 
 
 class QGroundTruthConverter(QtC.QObject):
@@ -55,10 +112,12 @@ class QGroundTruthConverter(QtC.QObject):
         Cross = cv2.MORPH_CROSS
 
     converterMessage = QtC.Signal(str, int)
-    convertGroundTruthMilestone = QtC.Signal(int)
+    multiprocessConvertFlag = QtC.Signal(int)
+
     def __init__(self, parent=None):
         super(QGroundTruthConverter, self).__init__(parent)
         self.convert_groundTruth_single = convert_groundTruth_single
+        self.insert_groundTruth_single = insert_groundTruth_single
 
     def convert(self, anno_path, category_name, boundary_smooth_halfwidth, boundary_smooth_coef, kernel_shape):
         grayscale_seq = [self.grayscale_sampler(x * boundary_smooth_coef) for x in range(boundary_smooth_halfwidth)]
@@ -94,82 +153,39 @@ class QGroundTruthConverter(QtC.QObject):
             os.makedirs(validation_fld)
 
         anno_pd = pd.DataFrame(anno_json['annotations'])
-        totoal_images_to_convert = len(anno_json['images'])
-        img_cnt = 0
+        anno_infos = []
+        for anno in anno_pd[anno_pd['category_id'] == category_id].iterrows():
+            anno_infos.append((anno[1]['segmentation'], anno[1]['bbox'], anno[1]['image_id'], kernel, grayscale_incseq))
+
         self.converterMessage.emit('正在将图片标注转换为真值掩码...', self.MessageType.Information)
-        self.convertGroundTruthMilestone.emit(0)
+        self.multiprocessConvertFlag.emit(0)
+        pool = mul.Pool(processes=os.cpu_count())
+        gts = pool.starmap_async(
+            self.convert_groundTruth_single,
+            [anno_info for anno_info in anno_infos]).get()
+        pool.close()
+        pool.join()
+        image_gts = {}
+        for gt in gts:
+            image_gt = image_gts.setdefault(gt[3], [])
+            image_gt.append(gt[:-1])
+        self.multiprocessConvertFlag.emit(100)
+
+        self.converterMessage.emit('正在合并真值掩码...', self.MessageType.Information)
+        self.multiprocessConvertFlag.emit(0)
+        img_infos = []
         for img in anno_json['images']:
-            img_id = img['id']
-            img_width = img['width']
-            img_height = img['height']
-            img_path = Path(img['path'])
-            try:
-                img_orig = cv2.imread(img_path.as_posix())
-            except Exception:
-                img_orig = None
-            img_boundary_mask = np.zeros((img_height, img_width))
-            img_region_mask = np.zeros((img_height, img_width))
-            anno_infos = []
-            for anno in anno_pd[(anno_pd['image_id'] == img_id) & (anno_pd['category_id'] == category_id)].iterrows():
-                anno_infos.append((anno[1]['segmentation'], anno[1]['bbox'], kernel, grayscale_incseq))
+            img_infos.append((img, image_gts[img['id']], category_name, category_color,
+                              gt_region_fld, gt_boundary_fld, validation_fld))
+        pool = mul.Pool(processes=os.cpu_count())
+        status = pool.starmap_async(
+            self.insert_groundTruth_single,
+            [img_info for img_info in img_infos]).get()
+        pool.close()
+        pool.join()
+        self.multiprocessConvertFlag.emit(100)
 
-            pool = mul.Pool(processes=os.cpu_count())
-            gts = pool.starmap_async(
-                self.convert_groundTruth_single,
-                [anno_info for anno_info in anno_infos]).get()
-            pool.close()
-            pool.join()
-
-            for gt in gts:
-                img_boundary_mask = self.merge_mask(img_boundary_mask, gt[1], gt[2])
-                img_region_mask = self.merge_mask(img_region_mask, gt[0], gt[2])
-
-            if np.max(img_boundary_mask) > 1:
-                img_boundary_mask = np.clip(img_boundary_mask, 0, 1)
-            if np.max(img_region_mask) > 1:
-                img_region_mask = np.clip(img_region_mask, 0, 1)
-            if img_orig is not None:
-                img_mask = np.stack([(img_boundary_mask * category_color[2]).astype(np.uint8),
-                                     (img_boundary_mask * category_color[1]).astype(np.uint8),
-                                     (img_boundary_mask * category_color[0]).astype(np.uint8)], axis=2)
-                img_orig = cv2.addWeighted(img_orig, 1, img_mask, 0.5, 0)
-                cv2.imwrite((validation_fld / (img_path.stem + '_{cat}_validation.png'.format(cat=category_name))).as_posix(),
-                            img_orig)
-
-            cv2.imwrite((gt_boundary_fld / (img_path.stem + '_{cat}_boundary.png'.format(cat=category_name))).as_posix(),
-                        (img_boundary_mask * 255).astype(np.uint8))
-            cv2.imwrite((gt_region_fld / (img_path.stem + '_{cat}_region.png'.format(cat=category_name))).as_posix(),
-                        (img_region_mask * 255).astype(np.uint8))
-
-            img_cnt += 1
-            self.convertGroundTruthMilestone.emit(math.floor(img_cnt / (totoal_images_to_convert / 100)))
-
-        # return img_region_mask, img_boundary_mask # for debugging
         return True
-
-    @staticmethod
-    def merge_mask(orig_mask, new_mask, bbox):
-        img_width = orig_mask.shape[1]
-        img_height = orig_mask.shape[0]
-        orig_area_width_lower = bbox[0] if bbox[0] >= 0 else 0
-        orig_area_height_lower = bbox[1] if bbox[1] >= 0 else 0
-        orig_area_width_upper = min(bbox[0] + bbox[2], img_width - 1)
-        orig_area_height_upper = min(bbox[1] + bbox[3], img_height - 1)
-        orig_area = orig_mask[
-                    orig_area_height_lower: orig_area_height_upper + 1,
-                    orig_area_width_lower: orig_area_width_upper + 1]
-        new_area_width_lower = 0 if bbox[0] >= 0 else -bbox[0]
-        new_area_height_lower = 0 if bbox[1] >= 0 else -bbox[1]
-        new_area_width_upper = bbox[2] \
-            if bbox[0] + bbox[2] <= img_width - 1 else img_width - 1 - bbox[0]
-        new_area_height_upper = bbox[3] \
-            if bbox[1] + bbox[3] <= img_height - 1 else img_height - 1 - bbox[1]
-        new_area = new_mask[
-                   new_area_height_lower: new_area_height_upper + 1,
-                   new_area_width_lower: new_area_width_upper + 1]
-        orig_area += new_area
-
-        return orig_mask
 
     def annotationCompatibilityCheck(self, fld):
         if not isinstance(fld, Path):

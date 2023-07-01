@@ -74,7 +74,7 @@ class IOWorker(QtC.QObject):
         self.thumbnailConverter.converterMessage.connect(self.converterMessageProxy)
         self.thumbnailConverter.convertThumbnailMilestone.connect(self.converterProgressProxy)
         self.groundTruthConverter.converterMessage.connect(self.converterMessageProxy)
-        self.groundTruthConverter.convertGroundTruthMilestone.connect(self.converterProgressProxy)
+        self.groundTruthConverter.multiprocessConvertFlag.connect(lambda maxprog: self.converterProgressRangeProxy(0, maxprog))
 
     @QtC.Slot(Path)
     def onDataFolderOpened(self, workFld):
