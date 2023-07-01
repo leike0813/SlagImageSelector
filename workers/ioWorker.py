@@ -16,6 +16,7 @@ from lib.parameterizedImantics import Default_Config
 from lib.parameterizedImantics.utils import replace_absolute_image_path
 from lib.utils import QAnnotationConverter
 from lib.utils import QThumbnailConverter
+from lib.utils import QGroundTruthConverter
 
 
 __all__ = ['IOWorker']
@@ -62,6 +63,7 @@ class IOWorker(QtC.QObject):
 
         self.annotationConverter = QAnnotationConverter(config=self.imanticsConfig, parent=self)
         self.thumbnailConverter = QThumbnailConverter(parent=self)
+        self.groundTruthConverter = QGroundTruthConverter(parent=self)
 
         self.creationTimeRegExp = r'^_([0-9]{6})_([0-9]{9})'
         # self.backupCreationTimeRegExp = r'^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2})-([0-9]{2})-([0-9]{2}).([0-9]{3})'
@@ -71,6 +73,8 @@ class IOWorker(QtC.QObject):
         self.annotationConverter.multiprocessConvertFlag.connect(lambda maxprog: self.converterProgressRangeProxy(0, maxprog))
         self.thumbnailConverter.converterMessage.connect(self.converterMessageProxy)
         self.thumbnailConverter.convertThumbnailMilestone.connect(self.converterProgressProxy)
+        self.groundTruthConverter.converterMessage.connect(self.converterMessageProxy)
+        self.groundTruthConverter.convertGroundTruthMilestone.connect(self.converterProgressProxy)
 
     @QtC.Slot(Path)
     def onDataFolderOpened(self, workFld):
@@ -318,6 +322,25 @@ class IOWorker(QtC.QObject):
 
             self.workerMessage.emit('提取完成', self.MessageType.Information)
             self.annotationExtracted.emit(True)
+        except Exception as e:
+            self.workerException.emit(e)
+
+    @QtC.Slot(Path, str, str, int, float)
+    def onConvertGroundTruthRequestReceived(self, sourceFile, categoryName, kernelShape, boundaryHalfWidth, boundarySmoothCoef):
+        try:
+            if kernelShape == '圆形':
+                kernel_shape = self.groundTruthConverter.KernelShape.Ellipse
+            elif kernelShape == '方形':
+                kernel_shape = self.groundTruthConverter.KernelShape.Rectangle
+            elif kernelShape == '十字形':
+                kernel_shape = self.groundTruthConverter.KernelShape.Cross
+
+            status = self.groundTruthConverter.convert(sourceFile, categoryName, boundaryHalfWidth, boundarySmoothCoef, kernel_shape)
+            if status:
+                self.workerMessage.emit('转换完成', self.MessageType.Information)
+            else:
+                self.workerMessage.emit('转换失败', self.MessageType.Information)
+            self.convertFinished.emit(True)
         except Exception as e:
             self.workerException.emit(e)
 

@@ -426,6 +426,7 @@ class QAnnotationConverter(QtC.QObject):
             fld = Path(fld)
         if fld.is_file():
             annotation_path = fld
+            fld = fld.parent.parent
         else:
             annotation_path = (fld / 'label') / 'annotations.json'
         if not annotation_path.exists():

@@ -231,6 +231,10 @@ class BaseMainWindow(Ui_MainWindow):
         self.annotationExtractorWidget.show()
 
     @QtC.Slot(bool)
+    def on_action_GroundTruthConverter_triggered(self, triggered):
+        self.groundTruthConverterWidget.show()
+
+    @QtC.Slot(bool)
     def on_action_Console_triggered(self, triggered):
         if self._disableConsole:
             status = QtW.QMessageBox.critical(self, '错误', '控制台已被禁用。', QtW.QMessageBox.Ok)

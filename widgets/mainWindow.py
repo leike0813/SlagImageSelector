@@ -9,6 +9,7 @@ from workers import IOWorker
 from widgets.selectionViewWidget import SelectionViewWidget
 from widgets.annotationConverterWidget import AnnotationConverterWidget
 from widgets.annotationExtractorWidget import AnnotationExtractorWidget
+from widgets.groundTruthConverterWidget import GroundTruthConverterWidget
 from ui.UiConfig_MainWindow import BaseMainWindow
 
 from PySide2.QtCore import QLibraryInfo
@@ -36,6 +37,7 @@ class MainWindow(BaseMainWindow, QtW.QMainWindow):
         self.selectionViewWidget = SelectionViewWidget(self)
         self.annotationConverterWidget = AnnotationConverterWidget()
         self.annotationExtractorWidget = AnnotationExtractorWidget()
+        self.groundTruthConverterWidget = GroundTruthConverterWidget()
 
         self.worker = IOWorker(self)
         self.workerThread = QtC.QThread()
