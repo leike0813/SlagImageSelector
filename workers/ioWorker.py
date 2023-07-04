@@ -237,24 +237,14 @@ class IOWorker(QtC.QObject):
                 for imgIdx in selection:
                     img = annoDataDict['images'].iloc[imgIdx]
                     imgPath = img['Path']
-                    # boundaryPath = img['BoundaryPath']
                     extractImgPath = Path(replace_absolute_image_path(
                         imgPath,
                         annoDataDict['info']['image_root'],
                         targetFld.as_posix()
                     ))
-                    # extractBoundaryPath = Path(replace_absolute_image_path(
-                    #     boundaryPath,
-                    #     annoDataDict['info']['image_root'],
-                    #     targetFld.as_posix()
-                    # ))
                     imgAnnoPath = imageAnnotationPath / (imgPath.stem + '.json')
                     if not extractImgPath.exists():
                         shutil.copy(imgPath, extractImgPath)
-                    # if not extractBoundaryPath.exists():
-                    #     if not (targetFld / 'result').exists():
-                    #         os.makedirs(targetFld / 'result')
-                    #     shutil.copy(boundaryPath, extractBoundaryPath)
 
                     img['path'] = extractImgPath.as_posix()
 

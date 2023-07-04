@@ -46,7 +46,8 @@ class Image(Semantic):
         if os.path.isdir(path):
             return Image.from_folder(path, config=config)
         
-        brg = cv2.imread(path)
+        # brg = cv2.imread(path)
+        brg = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
         image_array = cv2.cvtColor(brg, cv2.COLOR_BGR2RGB)
 
         return cls(image_array, path=path, config=config)
@@ -194,7 +195,8 @@ class Image(Semantic):
         if not color_by_category:
             color_by_category = self.config.IMAGE
         
-        temp_image = cv2.imread(self.path)
+        # temp_image = cv2.imread(self.path)
+        temp_image = cv2.imdecode(np.fromfile(self.path, dtype=np.uint8), cv2.IMREAD_COLOR)
         if temp_image is None:
             temp_image = np.zeros((self.height,self.width,3)).astype(np.uint8)
         temp_image.setflags(write=True)

@@ -24,7 +24,8 @@ _default_config = Default_Config.clone()
 
 def convert_annotation_single(img_idx, img_path, category, config=_default_config, img_object=None):
     if not img_object:
-        img_array = cv2.imread(img_path.as_posix())
+        # img_array = cv2.imread(img_path.as_posix())
+        img_array = cv2.imdecode(np.fromfile(img_path.as_posix(), dtype=np.uint8), cv2.IMREAD_COLOR)
         img = Image(img_array, id=img_idx, config=config)
         img.height = img_array.shape[0]
         img.width = img_array.shape[1]

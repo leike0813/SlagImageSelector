@@ -53,10 +53,6 @@ class QThumbnailConverter(QtC.QObject):
             self.converterMessage.emit('正在生成缩略图...', self.MessageType.Information)
             self.convertThumbnailMilestone.emit(0)
             for imgIdx, imgPath in enumerate(imageToCache):
-                # img = cv2.imread(imgPath.as_posix())
-                # imgSize = img.shape
-                # thumb = cv2.resize(img, (int(imgSize[1] * thumbnailScale), int(imgSize[0] * thumbnailScale)))
-                # cv2.imwrite((thumbFld / imgPath.name).as_posix(), thumb)
                 ret, status = self.convertThumbnail(imgPath, thumbFld, thumbnailScale)
                 if status:
                     self.cached.add(imgPath)
@@ -87,10 +83,12 @@ class QThumbnailConverter(QtC.QObject):
         # if not outputFld.exists(): # disable auto-creation of thumbnail directory to prevent misoperation,
         #     os.makedirs(outputFld) # make sure the .thumbnail directory is already exists before calling this method
         try:
-            img = cv2.imread(imagePath.as_posix())
+            # img = cv2.imread(imagePath.as_posix())
+            img = cv2.imdecode(np.fromfile(imagePath.as_posix()), cv2.IMREAD_COLOR)
             imgSize = img.shape
             thumb = cv2.resize(img, (int(imgSize[1] * thumbnailScale), int(imgSize[0] * thumbnailScale)))
-            cv2.imwrite((outputFld / imagePath.name).as_posix(), thumb)
+            # cv2.imwrite((outputFld / imagePath.name).as_posix(), thumb)
+            cv2.imencode('.jpg', thumb)[1].tofile((outputFld / imagePath.name).as_posix())
             return outputFld / imagePath.name, True
         except Exception as e:
             return e, False

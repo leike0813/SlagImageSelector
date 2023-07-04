@@ -48,7 +48,8 @@ def insert_groundTruth_single(img, img_gt, category_name, category_color, gt_reg
     img_height = img['height']
     img_path = Path(img['path'])
     try:
-        img_orig = cv2.imread(img_path.as_posix())
+        # img_orig = cv2.imread(img_path.as_posix())
+        img_orig = cv2.imdecode(np.fromfile(img_path.as_posix()), cv2.IMREAD_COLOR)
     except Exception:
         img_orig = None
     img_boundary_mask = np.zeros((img_height, img_width))
@@ -67,13 +68,19 @@ def insert_groundTruth_single(img, img_gt, category_name, category_color, gt_reg
                              (img_boundary_mask * category_color[1]).astype(np.uint8),
                              (img_boundary_mask * category_color[0]).astype(np.uint8)], axis=2)
         img_orig = cv2.addWeighted(img_orig, 1, img_mask, 0.5, 0)
-        cv2.imwrite((validation_fld / (img_path.stem + '_{cat}_validation.png'.format(cat=category_name))).as_posix(),
-                    img_orig)
+        # cv2.imwrite((validation_fld / (img_path.stem + '_{cat}_validation.png'.format(cat=category_name))).as_posix(),
+        #             img_orig)
+        cv2.imencode('.png', img_orig)[1].tofile(
+            (validation_fld / (img_path.stem + '_{cat}_validation.png'.format(cat=category_name))).as_posix())
 
-    cv2.imwrite((gt_boundary_fld / (img_path.stem + '_{cat}_boundary.png'.format(cat=category_name))).as_posix(),
-                (img_boundary_mask * 255).astype(np.uint8))
-    cv2.imwrite((gt_region_fld / (img_path.stem + '_{cat}_region.png'.format(cat=category_name))).as_posix(),
-                (img_region_mask * 255).astype(np.uint8))
+    # cv2.imwrite((gt_boundary_fld / (img_path.stem + '_{cat}_boundary.png'.format(cat=category_name))).as_posix(),
+    #             (img_boundary_mask * 255).astype(np.uint8))
+    cv2.imencode('.png', (img_boundary_mask * 255).astype(np.uint8))[1].tofile(
+        (gt_boundary_fld / (img_path.stem + '_{cat}_boundary.png'.format(cat=category_name))).as_posix())
+    # cv2.imwrite((gt_region_fld / (img_path.stem + '_{cat}_region.png'.format(cat=category_name))).as_posix(),
+    #             (img_region_mask * 255).astype(np.uint8))
+    cv2.imencode('.png', (img_region_mask * 255).astype(np.uint8))[1].tofile(
+        (gt_region_fld / (img_path.stem + '_{cat}_region.png'.format(cat=category_name))).as_posix())
 
 
 def merge_mask(orig_mask, new_mask, bbox):
