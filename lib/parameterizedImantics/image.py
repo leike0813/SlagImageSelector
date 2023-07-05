@@ -1,6 +1,6 @@
-
-from lxml import etree as ET    
-from lxml.builder import E
+# 20230705: lxml is now load-on-demand, modified by Joshua Reed
+# from lxml import etree as ET
+# from lxml.builder import E
 
 import os
 import cv2
@@ -306,6 +306,8 @@ class Image(Semantic):
         return yolo
 
     def voc(self, pretty=False):
+        from lxml import etree as ET
+        from lxml.builder import E
 
         annotations = []
         for annotation in self.iter_annotations():

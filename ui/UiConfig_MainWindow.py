@@ -7,8 +7,6 @@ import pandas as pd
 import PySide2.QtWidgets as QtW, PySide2.QtCore as QtC, PySide2.QtGui as QtG
 import qtawesome as qta
 from ui.Ui_MainWindow import Ui_MainWindow
-from lib.customWidgets import QIPythonConsoleWidget
-
 
 
 __all__ = ['BaseMainWindow']
@@ -245,6 +243,7 @@ class BaseMainWindow(Ui_MainWindow):
         """
         初始化调试控制台。
         """
+        from lib.customWidgets.ipythonConsoleWidget import QIPythonConsoleWidget
         self.console = QIPythonConsoleWidget(self, self)
         self.console.push({"sys": sys, "os": os, "QtC": QtC, "QtW": QtW, "QtG": QtG, "np": np, "pd": pd})
 

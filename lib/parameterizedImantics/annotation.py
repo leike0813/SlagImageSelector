@@ -1,5 +1,7 @@
-from lxml import etree as ET    
-from lxml.builder import E
+# 20230705: lxml is now load-on-demand, modified by Joshua Reed
+# from lxml import etree as ET
+# from lxml.builder import E
+
 import numpy as np
 import json
 import cv2
@@ -361,6 +363,7 @@ class Annotation(Semantic):
             return label, x, y, width, height
     
     def voc(self):
+        from lxml.builder import E
 
         element = E('object',
             E('name', self.category.name),

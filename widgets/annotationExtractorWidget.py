@@ -2,7 +2,7 @@ from pathlib import Path
 from enum import IntFlag
 import PySide2.QtCore as QtC, PySide2.QtWidgets as QtW, PySide2.QtGui as QtG
 from workers import IOWorker
-from lib.customWidgets import QCustomMessageBox
+from lib.customWidgets.customMessageBox import QCustomMessageBox
 from ui.UiConfig_AnnotationExtractorWidget import BaseAnnotationExtractorWidget
 
 

@@ -4,7 +4,7 @@ from copy import copy
 from enum import IntFlag
 import PySide2.QtWidgets as QtW, PySide2.QtCore as QtC, PySide2.QtGui as QtG
 import pandas as pd
-from lib.customWidgets import QCustomMessageBox
+from lib.customWidgets.customMessageBox import QCustomMessageBox
 from workers import IOWorker
 from widgets.selectionViewWidget import SelectionViewWidget
 from widgets.annotationConverterWidget import AnnotationConverterWidget
