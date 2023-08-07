@@ -142,7 +142,8 @@ class AnnotationExtractorWidget(BaseAnnotationExtractorWidget, QtW.QWidget):
             checkboxWidget = QtW.QWidget()
             checkboxLayout = QtW.QHBoxLayout()
             checkboxItem = QtW.QCheckBox()
-            if not origImgExist or not boundaryExist:
+            # if not origImgExist or not boundaryExist:
+            if not origImgExist: # relax the restrictions for actual need
                 checkboxItem.setEnabled(False)
                 invalid += 1
             checkboxItem.setStyleSheet('QCheckBox::indicator {width: 24; height:24;}')

@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>200</height>
+    <width>402</width>
+    <height>300</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -19,7 +19,7 @@
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
     <widget class="QWidget" name="centralWidget" native="true">
-     <layout class="QVBoxLayout" name="verticalLayout_2" stretch="1,2,0">
+     <layout class="QVBoxLayout" name="verticalLayout_2" stretch="1,0,4,0">
       <property name="leftMargin">
        <number>0</number>
       </property>
@@ -58,6 +58,33 @@
        </layout>
       </item>
       <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_3" stretch="0,1">
+        <property name="leftMargin">
+         <number>9</number>
+        </property>
+        <property name="rightMargin">
+         <number>9</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="categoryLabel">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="text">
+           <string>转换类别</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="categoryComboBox">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
        <widget class="QGroupBox" name="convertOptionGroupBox">
         <property name="enabled">
          <bool>false</bool>
@@ -66,11 +93,11 @@
          <string>转换选项</string>
         </property>
         <layout class="QGridLayout" name="gridLayout">
-         <item row="1" column="2">
-          <widget class="QLabel" name="label_3">
+         <item row="1" column="0">
+          <widget class="QLabel" name="label_2">
            <property name="text">
-            <string>边界平滑系数
-(0代表不平滑)</string>
+            <string>边界扩展半宽
+(1代表不扩展)</string>
            </property>
           </widget>
          </item>
@@ -97,22 +124,56 @@
            </property>
           </widget>
          </item>
-         <item row="1" column="0">
-          <widget class="QLabel" name="label_2">
+         <item row="1" column="2">
+          <widget class="QLabel" name="label_3">
            <property name="text">
-            <string>边界扩展半宽
-(1代表不扩展)</string>
+            <string>边界平滑系数
+(0代表不平滑)</string>
            </property>
           </widget>
          </item>
-         <item row="0" column="2">
+         <item row="2" column="0">
+          <widget class="QCheckBox" name="simpleBoundaryCheckBox">
+           <property name="text">
+            <string>普通边界</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QCheckBox" name="smoothBoundaryCheckBox">
+           <property name="text">
+            <string>平滑扩展边界</string>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="2">
+          <widget class="QCheckBox" name="simpleRegionCheckBox">
+           <property name="text">
+            <string>普通区域</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="3">
+          <widget class="QCheckBox" name="centralizeRegionCheckBox">
+           <property name="text">
+            <string>中心平滑区域</string>
+           </property>
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="0">
           <widget class="QLabel" name="label_4">
            <property name="text">
             <string>内核形状</string>
            </property>
           </widget>
          </item>
-         <item row="0" column="3">
+         <item row="0" column="1">
           <widget class="QComboBox" name="kernelShapeComboBox">
            <item>
             <property name="text">
@@ -131,15 +192,25 @@
            </item>
           </widget>
          </item>
-         <item row="0" column="0">
-          <widget class="QLabel" name="label_5">
+         <item row="0" column="2">
+          <widget class="QLabel" name="label_6">
            <property name="text">
-            <string>转换类别</string>
+            <string>区域概率下界</string>
            </property>
           </widget>
          </item>
-         <item row="0" column="1">
-          <widget class="QComboBox" name="categoryComboBox"/>
+         <item row="0" column="3">
+          <widget class="QDoubleSpinBox" name="regionProbLowerBoundDoubleSpinBox">
+           <property name="maximum">
+            <double>1.000000000000000</double>
+           </property>
+           <property name="singleStep">
+            <double>0.050000000000000</double>
+           </property>
+           <property name="value">
+            <double>0.550000000000000</double>
+           </property>
+          </widget>
          </item>
         </layout>
        </widget>

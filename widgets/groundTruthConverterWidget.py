@@ -11,7 +11,7 @@ __all__ = ['GroundTruthConverterWidget']
 class GroundTruthConverterWidget(BaseGroundTruthConverterWidget, QtW.QWidget):
     sendTextToStatusBar = QtC.Signal(str, int, int)
     sendToMessageBox = QtC.Signal(str, int)
-    convertGroundTruthRequest = QtC.Signal(Path, str, str, int, float)
+    convertGroundTruthRequest = QtC.Signal(Path, str, str, int, float, float, list)
 
     def __init__(self, parent=None):
         super(GroundTruthConverterWidget, self).__init__(parent)
@@ -74,6 +74,8 @@ class GroundTruthConverterWidget(BaseGroundTruthConverterWidget, QtW.QWidget):
 
         self.sourceFile = sourceFile
         self.sourceFileLineEdit.setText(str(sourceFile))
+        self.categoryLabel.setEnabled(True)
+        self.categoryComboBox.setEnabled(True)
         self.convertOptionGroupBox.setEnabled(True)
         self.convertPushButton.setEnabled(True)
         for cat in categories:
@@ -88,6 +90,13 @@ class GroundTruthConverterWidget(BaseGroundTruthConverterWidget, QtW.QWidget):
             self.categoryComboBox.currentText(),
             self.kernelShapeComboBox.currentText(),
             self.boundaryHalfWidthSpinBox.value(),
-            self.boundarySmoothCoefDoubleSpinBox.value()
+            self.boundarySmoothCoefDoubleSpinBox.value(),
+            self.regionProbLowerBoundDoubleSpinBox.value(),
+            [
+                self.smoothBoundaryCheckBox.isChecked(),
+                self.simpleBoundaryCheckBox.isChecked(),
+                self.centralizeRegionCheckBox.isChecked(),
+                self.simpleRegionCheckBox.isChecked()
+            ]
         )
         self.centralWidget.setEnabled(False)

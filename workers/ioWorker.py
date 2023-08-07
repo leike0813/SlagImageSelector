@@ -315,8 +315,8 @@ class IOWorker(QtC.QObject):
         except Exception as e:
             self.workerException.emit(e)
 
-    @QtC.Slot(Path, str, str, int, float)
-    def onConvertGroundTruthRequestReceived(self, sourceFile, categoryName, kernelShape, boundaryHalfWidth, boundarySmoothCoef):
+    @QtC.Slot(Path, str, str, int, float, float, list)
+    def onConvertGroundTruthRequestReceived(self, sourceFile, categoryName, kernelShape, boundaryHalfWidth, boundarySmoothCoef, regionProbLowerBound, flags):
         try:
             if kernelShape == '圆形':
                 kernel_shape = self.groundTruthConverter.KernelShape.Ellipse
@@ -325,7 +325,7 @@ class IOWorker(QtC.QObject):
             elif kernelShape == '十字形':
                 kernel_shape = self.groundTruthConverter.KernelShape.Cross
 
-            status = self.groundTruthConverter.convert(sourceFile, categoryName, boundaryHalfWidth, boundarySmoothCoef, kernel_shape)
+            status = self.groundTruthConverter.convert(sourceFile, categoryName, boundaryHalfWidth, boundarySmoothCoef, kernel_shape, regionProbLowerBound, flags)
             if status:
                 self.workerMessage.emit('转换完成', self.MessageType.Information)
             else:

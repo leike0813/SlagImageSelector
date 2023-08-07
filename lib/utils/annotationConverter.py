@@ -278,18 +278,36 @@ class QAnnotationConverter(QtC.QObject):
             with open(annotation_path, 'r') as _anno:
                 annotations = json.load(_anno)
 
-            old_image_root = annotations['info']['image_root']
+            try:
+                old_image_root = annotations['info'].get('image_root')
+            except AttributeError:
+                old_image_root = None
+
             total_images = len(annotations['images'])
+            path_in_img_dict = 'path' in annotations['images'][0].keys()
             self.converterMessage.emit('正在修复标注文件...', self.MessageType.Information)
             self.buildAnnotationMilestone.emit(0)
-            for i in range(total_images):
-                annotations['images'][i]['path'] = replace_absolute_image_path(
-                    annotations['images'][i]['path'],
-                    old_image_root,
-                    new_image_root
-                )
-                self.buildAnnotationMilestone.emit(math.floor((i + 1) / (total_images / 100)))
-            annotations['info']['image_root'] = new_image_root
+            if old_image_root and path_in_img_dict:
+                for i in range(total_images):
+                    annotations['images'][i]['path'] = replace_absolute_image_path(
+                        annotations['images'][i]['path'],
+                        old_image_root,
+                        new_image_root
+                    )
+                    self.buildAnnotationMilestone.emit(math.floor((i + 1) / (total_images / 100)))
+                annotations['info']['image_root'] = new_image_root
+            else:
+                for i in range(total_images):
+                    img_path = Path(new_image_root) / annotations['images'][i]['file_name']
+                    if img_path.exists():
+                        annotations['images'][i]['path'] = img_path.as_posix()
+                    else:
+                        annotations['images'][i]['path'] = ''
+                if isinstance(annotations['info'], dict):
+                    annotations['info']['image_root'] = new_image_root
+                else:
+                    annotations['info'] = {'image_root': new_image_root}
+
         except Exception:
             self.converterMessage.emit(
                 '无法读取"{ant}", 或包含非法键值'.format(ant=str(annotation_path)),

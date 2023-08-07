@@ -25,6 +25,8 @@ class BaseGroundTruthConverterWidget(Ui_GroundTruthConverterWidget):
         self.progressBar.reset()
         self.sourceFileLineEdit.setText('')
         self.categoryComboBox.clear()
+        self.categoryLabel.setEnabled(False)
+        self.categoryComboBox.setEnabled(False)
         self.convertOptionGroupBox.setEnabled(False)
         self.convertPushButton.setEnabled(False)
     @QtC.Slot(str, int)
@@ -33,6 +35,16 @@ class BaseGroundTruthConverterWidget(Ui_GroundTruthConverterWidget):
             self.sendTextToStatusBar.emit(msg, -1, 3)
         elif msgtype == 2 or msgtype == 3:
             self.sendToMessageBox.emit(msg, msgtype)
+
+    @QtC.Slot(int)
+    def on_smoothBoundaryCheckBox_stateChanged(self, state):
+        self.kernelShapeComboBox.setEnabled(state == QtC.Qt.Checked)
+        self.boundaryHalfWidthSpinBox.setEnabled(state == QtC.Qt.Checked)
+        self.boundarySmoothCoefDoubleSpinBox.setEnabled(state == QtC.Qt.Checked)
+
+    @QtC.Slot(int)
+    def on_centralizeRegionCheckBox_stateChanged(self, state):
+        self.regionProbLowerBoundDoubleSpinBox.setEnabled(state == QtC.Qt.Checked)
 
     @QtC.Slot(str, int, int)
     def statusBarShowMessage(self, msg, timeout, priority):
